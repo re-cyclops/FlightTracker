@@ -74,13 +74,73 @@ TEMPERATURE_COLOURS = (
     (30, colours.ORANGE),
 )
 
+# 5x5 condition glyphs drawn left of the temperature, between the clock
+# (ends by x42) and the temperature text (starts x48)
+CONDITION_ICON_POSITION = (43, 1)
+
+SUN_ICON = [
+    (x, y, colours.YELLOW)
+    for x, y in [
+        (2, 0),
+        (0, 2), (4, 2),
+        (2, 4),
+        (1, 1), (2, 1), (3, 1),
+        (1, 2), (2, 2), (3, 2),
+        (1, 3), (2, 3), (3, 3),
+    ]
+]
+
+CLOUD_ICON = [
+    (x, y, colours.GREY)
+    for x, y in [
+        (1, 1), (2, 1),
+        (0, 2), (1, 2), (2, 2), (3, 2),
+        (0, 3), (1, 3), (2, 3), (3, 3), (4, 3),
+    ]
+]
+
+RAIN_ICON = [
+    (x, y, colours.GREY)
+    for x, y in [
+        (1, 0), (2, 0),
+        (0, 1), (1, 1), (2, 1), (3, 1), (4, 1),
+    ]
+] + [
+    (x, y, colours.BLUE_LIGHT)
+    for x, y in [
+        (0, 3), (2, 3), (4, 3),
+        (1, 4), (3, 4),
+    ]
+]
+
+SNOW_ICON = [
+    (x, y, colours.WHITE)
+    for x, y in [
+        (2, 0),
+        (0, 1), (4, 1),
+        (2, 2),
+        (0, 3), (4, 3),
+        (2, 4),
+    ]
+]
+
+# keyed on openweather's weather[0].main condition string
+CONDITION_ICONS = {
+    "Clear": SUN_ICON,
+    "Clouds": CLOUD_ICON,
+    "Drizzle": RAIN_ICON,
+    "Rain": RAIN_ICON,
+    "Snow": SNOW_ICON,
+    "Thunderstorm": RAIN_ICON,
+}
+
 # Cache grabbing weather data
 class WeatherError(Exception):
     """Raised when weather data cannot be retrieved after all retries."""
     pass
 
 
-@lru_cache()
+@lru_cache(maxsize=2)
 def grab_weather(location, ttl_hash=None):
     del ttl_hash  # not used directly, just part of the cache key
 
@@ -93,7 +153,9 @@ def grab_weather(location, ttl_hash=None):
             raw_data = urllib.request.urlopen(request, timeout=3).read()
             content = json.loads(raw_data.decode("utf-8"))
             break
-        except Exception as e:
+        except (OSError, ValueError, KeyError, TypeError):
+            # OSError covers urllib's URLError/HTTPError and socket timeouts;
+            # ValueError covers bad json/decoding. anything else is a real bug
             retries -= 1
     else:
         # We've ran out of retries without getting new weather data
@@ -160,6 +222,7 @@ def grab_upcoming_rainfall_and_temperature(location, hours):
 
 def grab_current_temperature_openweather(location, apikey, units):
     current_temp = None
+    condition = None
     retries = WEATHER_RETRIES
 
     while retries:
@@ -176,8 +239,10 @@ def grab_current_temperature_openweather(location, apikey, units):
             raw_data = urllib.request.urlopen(request, timeout=3).read()
             content = json.loads(raw_data.decode("utf-8"))
             current_temp = content["main"]["temp"]
+            weather_list = content.get("weather") or []
+            condition = weather_list[0].get("main") if weather_list else None
             break
-        except Exception as e:
+        except (OSError, ValueError, KeyError, TypeError):
             retries -= 1
     else:
         raise WeatherError(
@@ -185,7 +250,7 @@ def grab_current_temperature_openweather(location, apikey, units):
             f"after {WEATHER_RETRIES} retries"
         )
 
-    return current_temp
+    return current_temp, condition
 
 
 def _is_demo_mode():
@@ -207,14 +272,18 @@ class WeatherScene(object):
         self._last_upcoming_rain_and_temp = None
         self._last_temperature = None
         self._last_temperature_str = None
+        self._current_condition = None
+        self._last_condition_pixels = []
 
         # Attempt to grab the current temperature using OPENWEATHER if a key
         # is provided otherwise fallback on the taps-aff service
+        # each provider returns (temperature, condition); taps-aff has no
+        # condition data so it reports None
         self._temperature_providers = [
             *( [lambda: grab_current_temperature_openweather(
                     WEATHER_LOCATION, OPENWEATHER_API_KEY, TEMPERATURE_UNITS
                 )] if OPENWEATHER_API_KEY else [] ),
-            lambda: grab_current_temperature(WEATHER_LOCATION, TEMPERATURE_UNITS)
+            lambda: (grab_current_temperature(WEATHER_LOCATION, TEMPERATURE_UNITS), None)
         ]
 
     def colour_gradient(self, colour_A, colour_B, ratio):
@@ -376,13 +445,15 @@ class WeatherScene(object):
                     self._last_temperature_str,
                 )
                 self._last_temperature_str = None
+            self._undraw_condition_icon()
             return
 
         if not (count % TEMPERATURE_REFRESH_SECONDS):
             self.current_temperature = None
-            for temperature in self._temperature_providers:
+            self._current_condition = None
+            for provider in self._temperature_providers:
                 try:
-                    self.current_temperature = temperature()
+                    self.current_temperature, self._current_condition = provider()
                     break
                 except WeatherError:
                     continue
@@ -403,6 +474,8 @@ class WeatherScene(object):
                 self._last_temperature_str,
             )
 
+        self._undraw_condition_icon()
+
         if self.current_temperature is not None:
             temp_str = f"{round(self.current_temperature)}°".rjust(4, " ")
 
@@ -418,5 +491,26 @@ class WeatherScene(object):
                 temp_str,
             )
 
+            self._draw_condition_icon()
+
             self._last_temperature = self.current_temperature
             self._last_temperature_str = temp_str
+
+    def _undraw_condition_icon(self):
+        if self._last_condition_pixels:
+            for px, py in self._last_condition_pixels:
+                self.canvas.SetPixel(px, py, 0, 0, 0)
+            self._last_condition_pixels = []
+
+    def _draw_condition_icon(self):
+        icon = CONDITION_ICONS.get(self._current_condition)
+        if icon is None:
+            return
+
+        drawn_pixels = []
+        for dx, dy, colour in icon:
+            px = CONDITION_ICON_POSITION[0] + dx
+            py = CONDITION_ICON_POSITION[1] + dy
+            self.canvas.SetPixel(px, py, colour.red, colour.green, colour.blue)
+            drawn_pixels.append((px, py))
+        self._last_condition_pixels = drawn_pixels
