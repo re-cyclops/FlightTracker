@@ -3,7 +3,7 @@ import sys
 from setup import frames
 from utilities.animator import Animator
 from utilities.overhead import Overhead
-from utilities.quiethours import should_display_be_dim
+from utilities.quiethours import should_display_be_dim, get_quiet_status
 
 from scenes.weather import WeatherScene
 from scenes.flightdetails import FlightDetailsScene
@@ -137,7 +137,7 @@ class Display(
         options.pixel_mapper_config = ""
         options.show_refresh_rate = 0
         options.gpio_slowdown = GPIO_SLOWDOWN
-        options.disable_hardware_pulsing = True
+        options.disable_hardware_pulsing = not HAT_PWM_ENABLED
         options.drop_privileges = True
         self.matrix = RGBMatrix(options=options)
 
@@ -149,6 +149,14 @@ class Display(
         self._data_index = 0
         self._data = []
         self._data_all_looped = False
+
+        # quiet hours state, re-checked once per second; seeded here so a
+        # boot inside the off window doesn't flash frames 1-9 at full brightness
+        startup_status = get_quiet_status()
+        self._quiet_off = startup_status["mode"] == "off"
+        self._applied_brightness = min(startup_status["brightness"], BRIGHTNESS)
+        self.matrix.brightness = self._applied_brightness
+        self.canvas.brightness = self._applied_brightness
 
         # Start Looking for planes
         self.overhead = Overhead()
@@ -205,6 +213,31 @@ class Display(
 
             if reset_required:
                 self.reset_scene()
+
+    @Animator.KeyFrame.add(frames.PER_SECOND)
+    def check_quiet_hours(self, count):
+        status = get_quiet_status()
+        was_off = self._quiet_off
+        self._quiet_off = status["mode"] == "off"
+
+        # cap at configured BRIGHTNESS so normal mode restores it, not 100
+        target = min(status["brightness"], BRIGHTNESS)
+        if target != self._applied_brightness:
+            # canvas too: with SwapOnVSync the offscreen canvas keeps its own brightness
+            self.matrix.brightness = target
+            self.canvas.brightness = target
+            self._applied_brightness = target
+
+        if was_off and not self._quiet_off:
+            # scenes that only paint on change (e.g. clock) need a full redraw
+            self.reset_scene()
+
+    @Animator.KeyFrame.add(1)
+    def zzzz_quiet_blank(self, count):
+        # runs after all scene draws, before zzzzz_sync, so the off
+        # window always swaps a black canvas
+        if self._quiet_off:
+            self.canvas.Clear()
 
     @Animator.KeyFrame.add(1)
     def zzzzz_sync(self, count):
