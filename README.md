@@ -65,11 +65,11 @@ source env/bin/activate
 
 ### 2. Install dependencies
 
-The requirements.txt includes `RPi.GPIO` which only works on Raspberry Pi. Install the rest manually:
-
 ```bash
-pip install beautifulsoup4 requests FlightRadarAPI RGBMatrixEmulator
+pip install -r requirements-dev.txt
 ```
+
+`RPi.GPIO` is skipped automatically off-Pi via an environment marker.
 
 ### 3. Create config.py
 
