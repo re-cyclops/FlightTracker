@@ -1,6 +1,7 @@
 import math
 import random
 from utilities.animator import Animator
+from utilities.quiethours import should_display_be_dim
 from setup import frames
 
 
@@ -12,6 +13,11 @@ def _is_demo_mode():
         return True
 
 DEMO_MODE = _is_demo_mode()
+
+try:
+    from config import IDLE_ANIMATIONS_ENABLED
+except (ModuleNotFoundError, NameError, ImportError):
+    IDLE_ANIMATIONS_ENABLED = True
 
 # aurora colors: green, blue, purple, cyan
 AURORA_COLORS = [
@@ -57,11 +63,19 @@ class AuroraScene(object):
 
     @Animator.KeyFrame.add(1)
     def zzz_aurora(self, count):
-        if not DEMO_MODE:
+        if not (DEMO_MODE or IDLE_ANIMATIONS_ENABLED):
             return
 
         # only show when no flights overhead
         if len(self._data):
+            if self._last_aurora_pixels:
+                for px, py in self._last_aurora_pixels:
+                    self.canvas.SetPixel(px, py, 0, 0, 0)
+                self._last_aurora_pixels = []
+            return
+
+        # yield to the quiet-hours ambient scene on the real panel
+        if not DEMO_MODE and should_display_be_dim():
             if self._last_aurora_pixels:
                 for px, py in self._last_aurora_pixels:
                     self.canvas.SetPixel(px, py, 0, 0, 0)

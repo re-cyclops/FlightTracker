@@ -1,5 +1,6 @@
 import math
 from utilities.animator import Animator
+from utilities.quiethours import should_display_be_dim
 from setup import colours, frames
 from rgbmatrix import graphics
 
@@ -12,6 +13,11 @@ def _is_demo_mode():
         return True
 
 DEMO_MODE = _is_demo_mode()
+
+try:
+    from config import IDLE_ANIMATIONS_ENABLED
+except (ModuleNotFoundError, NameError, ImportError):
+    IDLE_ANIMATIONS_ENABLED = True
 
 # heart shape (8x6 pixels)
 # centered at position for visibility alongside clock/weather
@@ -48,12 +54,20 @@ class HeartbeatScene(object):
 
     @Animator.KeyFrame.add(frames.PER_SECOND // 10)
     def zz_heartbeat(self, count):
-        if not DEMO_MODE:
+        if not (DEMO_MODE or IDLE_ANIMATIONS_ENABLED):
             return
 
         # only show when no flights overhead
         if len(self._data):
             # clear heart if flights appear
+            if self._last_heart_pixels:
+                for px, py in self._last_heart_pixels:
+                    self.canvas.SetPixel(px, py, 0, 0, 0)
+                self._last_heart_pixels = []
+            return
+
+        # yield to the quiet-hours ambient scene on the real panel
+        if not DEMO_MODE and should_display_be_dim():
             if self._last_heart_pixels:
                 for px, py in self._last_heart_pixels:
                     self.canvas.SetPixel(px, py, 0, 0, 0)

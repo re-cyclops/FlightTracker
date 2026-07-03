@@ -1,6 +1,7 @@
 import math
 from utilities.animator import Animator
 from utilities.datenow import get_now
+from utilities.quiethours import should_display_be_dim
 from setup import frames
 
 
@@ -12,6 +13,11 @@ def _is_demo_mode():
         return True
 
 DEMO_MODE = _is_demo_mode()
+
+try:
+    from config import IDLE_ANIMATIONS_ENABLED
+except (ModuleNotFoundError, NameError, ImportError):
+    IDLE_ANIMATIONS_ENABLED = True
 
 # time periods and their color schemes
 # format: (hour_start, hour_end, sky_colors, ground_color)
@@ -56,8 +62,15 @@ class TimeOfDayScene(object):
                 self._last_tod_pixels = []
             return
 
-        # only show in demo/test mode
-        if not DEMO_MODE:
+        if not (DEMO_MODE or IDLE_ANIMATIONS_ENABLED):
+            return
+
+        # yield to the quiet-hours ambient scene on the real panel
+        if not DEMO_MODE and should_display_be_dim():
+            if self._last_tod_pixels:
+                for px, py in self._last_tod_pixels:
+                    self.canvas.SetPixel(px, py, 0, 0, 0)
+                self._last_tod_pixels = []
             return
 
         # mutual exclusion - only one idle animation per frame

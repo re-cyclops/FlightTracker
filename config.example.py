@@ -50,6 +50,11 @@ HAT_PWM_ENABLED = False
 HARDWARE_PULSE = False
 LED_RGB_SEQUENCE = "RGB"  # try "RBG", "BGR", or "GRB" if colors look wrong
 
+# Show ambient idle animations (rain, time of day, heartbeat, aurora) on the
+# real panel when no flights are overhead. During quiet hours the ambient
+# quiet-hours scene takes over regardless. Set False for clock/date/temp only.
+IDLE_ANIMATIONS_ENABLED = True
+
 # =============================================================================
 # API KEYS
 # =============================================================================
@@ -170,3 +175,9 @@ QUOTES = [
 # Time (hours/minutes/seconds) stays real, only the date changes
 # Comment out or set to "" to use the real date
 # DEBUG_DATE = "12-31"
+
+# Override the time for testing quiet hours without changing system clock
+# Format: "HH:MM" 24-hour (e.g., "22:30")
+# Seconds stay real, only the hour/minute change
+# Comment out or set to "" to use the real time
+# DEBUG_TIME = "22:30"
