@@ -1,6 +1,6 @@
 from FlightRadar24.api import FlightRadar24API
 from threading import Thread, Lock
-from time import sleep
+from time import sleep, monotonic
 import math
 import sys
 
@@ -23,6 +23,7 @@ except (ModuleNotFoundError, NameError, ImportError):
 
 RETRIES = 3
 RATE_LIMIT_DELAY = 1
+STALE_AFTER_SECONDS = 600
 MAX_FLIGHT_LOOKUP = 5
 EARTH_RADIUS_KM = 6371
 BLANK_FIELDS = ["", "N/A", "NONE"]
@@ -74,6 +75,11 @@ def is_in_window_view(flight, home=LOCATION_DEFAULT):
     return abs(diff) <= half_fov
 
 
+def is_in_altitude_band(flight):
+    """Check if a flight is inside the configured altitude band (exclusive bounds)."""
+    return MIN_ALTITUDE < flight.altitude < MAX_ALTITUDE
+
+
 def distance_from_flight_to_home(flight, home=LOCATION_DEFAULT):
     def polar_to_cartesian(lat, long, alt):
         DEG2RAD = math.pi / 180
@@ -112,15 +118,25 @@ class Overhead:
         self._data = []
         self._new_data = False
         self._processing = False
+        self._first_attempt = None
+        self._last_success = None
 
     def grab_data(self):
-        Thread(target=self._grab_data).start()
+        with self._lock:
+            # a fetch is already in flight, don't hit the scraper twice
+            if self._processing:
+                return
+            self._processing = True
+
+        # daemon so retry sleeps can't block interpreter exit on ctrl-c
+        Thread(target=self._grab_data, daemon=True).start()
 
     def _grab_data(self):
         # Mark data as old
         with self._lock:
             self._new_data = False
-            self._processing = True
+            if self._first_attempt is None:
+                self._first_attempt = monotonic()
 
         data = []
 
@@ -133,8 +149,7 @@ class Overhead:
             flights = [
                 f
                 for f in flights
-                if f.altitude < MAX_ALTITUDE
-                and f.altitude > MIN_ALTITUDE
+                if is_in_altitude_band(f)
                 and is_in_window_view(f)
             ]
             flights = sorted(flights, key=lambda f: distance_from_flight_to_home(f))
@@ -195,18 +210,19 @@ class Overhead:
 
             with self._lock:
                 self._new_data = True
-                self._processing = False
                 self._data = data
+                self._last_success = monotonic()
 
         except (ConnectionError, NewConnectionError, MaxRetryError) as e:
             print(f"FlightRadar API connection error: {e}", file=sys.stderr)
             with self._lock:
                 self._new_data = False
-                self._processing = False
         except Exception as e:
             print(f"FlightRadar API unexpected error: {e}", file=sys.stderr)
             with self._lock:
                 self._new_data = False
+        finally:
+            with self._lock:
                 self._processing = False
 
     @property
@@ -229,6 +245,15 @@ class Overhead:
     def data_is_empty(self):
         with self._lock:
             return len(self._data) == 0
+
+    @property
+    def data_is_stale(self):
+        # a dead feed on a headless pi otherwise looks like a quiet sky
+        with self._lock:
+            if self._first_attempt is None:
+                return False
+            reference = self._last_success if self._last_success is not None else self._first_attempt
+            return (monotonic() - reference) > STALE_AFTER_SECONDS
 
 
 # Main function

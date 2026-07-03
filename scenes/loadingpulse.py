@@ -1,10 +1,14 @@
 from utilities.animator import Animator
+from utilities.quiethours import should_display_be_off
 from setup import colours
 
 # Setup
 BLINKER_POSITION = (63, 0)
 BLINKER_STEPS = 10
 BLINKER_COLOUR = colours.WHITE
+STALE_POSITION = (62, 0)
+STALE_COLOUR = colours.RED
+STALE_BRIGHTNESS = 0.2
 
 
 class LoadingPulseScene(object):
@@ -33,5 +37,18 @@ class LoadingPulseScene(object):
         else:
             # Not processing, blank the square
             self.canvas.SetPixel(BLINKER_POSITION[0], BLINKER_POSITION[1], 0, 0, 0)
+
+        if self.overhead.data_is_stale and not should_display_be_off():
+            # dead fr24 feed warning; a quiet sky and a broken feed
+            # otherwise look identical on a headless pi
+            self.canvas.SetPixel(
+                STALE_POSITION[0],
+                STALE_POSITION[1],
+                STALE_BRIGHTNESS * STALE_COLOUR.red,
+                STALE_BRIGHTNESS * STALE_COLOUR.green,
+                STALE_BRIGHTNESS * STALE_COLOUR.blue,
+            )
+        else:
+            self.canvas.SetPixel(STALE_POSITION[0], STALE_POSITION[1], 0, 0, 0)
 
         return reset_count
