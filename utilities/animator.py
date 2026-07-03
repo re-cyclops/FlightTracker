@@ -104,8 +104,8 @@ class Animator(object):
         self._idle_drawn_this_frame = True
         return True
 
-    def clear_clock_region(self, drawn_pixels=None):
-        """Clear the clock region (y=0-10) to prevent overlap with idle animations.
+    def _clear_region(self, y_start, y_end, drawn_pixels=None):
+        """Blank a horizontal band of the display.
 
         Args:
             drawn_pixels: optional list to append cleared pixel coords to
@@ -114,7 +114,6 @@ class Animator(object):
             list of (x, y) tuples that were cleared
         """
         cleared = []
-        y_start, y_end = CLOCK_REGION_Y
         for x in range(64):
             for y in range(y_start, y_end + 1):
                 self.canvas.SetPixel(x, y, 0, 0, 0)
@@ -123,17 +122,13 @@ class Animator(object):
             drawn_pixels.extend(cleared)
         return cleared
 
+    def clear_clock_region(self, drawn_pixels=None):
+        """Clear the clock region (y=0-10) to prevent overlap with idle animations."""
+        return self._clear_region(*CLOCK_REGION_Y, drawn_pixels)
+
     def clear_date_region(self, drawn_pixels=None):
         """Clear the date region (y=25-31) to prevent overlap with idle animations."""
-        cleared = []
-        y_start, y_end = DATE_REGION_Y
-        for x in range(64):
-            for y in range(y_start, y_end + 1):
-                self.canvas.SetPixel(x, y, 0, 0, 0)
-                cleared.append((x, y))
-        if drawn_pixels is not None:
-            drawn_pixels.extend(cleared)
-        return cleared
+        return self._clear_region(*DATE_REGION_Y, drawn_pixels)
 
     def _register_keyframes(self):
         # Some introspection to setup keyframes
