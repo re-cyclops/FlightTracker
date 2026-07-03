@@ -114,6 +114,62 @@ class TestGetNow(unittest.TestCase):
         result = get_now()
         self.assertAlmostEqual(result.timestamp(), datetime.now().timestamp(), delta=1)
 
+    def test_debug_time_overrides_hour_and_minute(self):
+        self._set_config(DEBUG_TIME="22:30")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertEqual(result.hour, 22)
+        self.assertEqual(result.minute, 30)
+
+    def test_debug_time_preserves_real_date(self):
+        self._set_config(DEBUG_TIME="06:15")
+        from utilities.datenow import get_now
+        result = get_now()
+        now = datetime.now()
+        self.assertEqual(result.year, now.year)
+        self.assertEqual(result.month, now.month)
+        self.assertEqual(result.day, now.day)
+
+    def test_empty_debug_time_returns_real_now(self):
+        self._set_config(DEBUG_TIME="")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertAlmostEqual(result.timestamp(), datetime.now().timestamp(), delta=1)
+
+    def test_none_debug_time_returns_real_now(self):
+        self._set_config(DEBUG_TIME=None)
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertAlmostEqual(result.timestamp(), datetime.now().timestamp(), delta=1)
+
+    def test_invalid_debug_time_format_falls_back(self):
+        self._set_config(DEBUG_TIME="not-a-time")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertAlmostEqual(result.timestamp(), datetime.now().timestamp(), delta=1)
+
+    def test_invalid_debug_time_hour_falls_back(self):
+        self._set_config(DEBUG_TIME="25:00")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertAlmostEqual(result.timestamp(), datetime.now().timestamp(), delta=1)
+
+    def test_debug_time_midnight_boundary(self):
+        self._set_config(DEBUG_TIME="00:00")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertEqual(result.hour, 0)
+        self.assertEqual(result.minute, 0)
+
+    def test_debug_date_and_time_combine(self):
+        self._set_config(DEBUG_DATE="12-31", DEBUG_TIME="23:59")
+        from utilities.datenow import get_now
+        result = get_now()
+        self.assertEqual(result.month, 12)
+        self.assertEqual(result.day, 31)
+        self.assertEqual(result.hour, 23)
+        self.assertEqual(result.minute, 59)
+
     def test_feb_29_non_leap_year_falls_back(self):
         self._set_config(DEBUG_DATE="02-29")
         from utilities.datenow import get_now
