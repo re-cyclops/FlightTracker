@@ -1,0 +1,3 @@
+# FlightTracker Project
+
+@../AGENTS.md
