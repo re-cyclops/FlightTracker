@@ -2,16 +2,6 @@
 
 Personal fork of [ColinWaddell/FlightTracker](https://github.com/ColinWaddell/FlightTracker) for a gift LED panel.
 
-## Project Documentation
-
-**Obsidian doc:** `~/personal/Obsidian/001 projects/PERSONAL/flight tracker led panel.md`
-
-**IMPORTANT:** Update the Obsidian doc as you work:
-- Mark animation checkboxes when completed
-- Add new learnings to relevant sections
-- Update status if project phase changes
-- Add dated entries to any "Review Notes" sections
-
 ## Hardware
 
 - Raspberry Pi 3 B+
